@@ -43,12 +43,13 @@ IFF_DORMANT = 0x20000  # has netif_carrier_on()
 def get_ifnames():
     """ returns list of interface names (up and down) """
     ifnames = []
-    for line in file('/proc/net/dev').readlines():
-        try:
-            ifname, junk = line.strip().split(":")
-            ifnames.append(ifname)
-        except ValueError:
-            pass
+    with open('/proc/net/dev', 'r') as fob:
+        for line in fob:
+            try:
+                ifname, junk = line.strip().split(":")
+                ifnames.append(ifname)
+            except ValueError:
+                pass
 
     return ifnames
 

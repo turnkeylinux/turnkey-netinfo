@@ -2,9 +2,9 @@
 
 from distutils.core import setup
 
-setup(name='TurnkeyNetinfo',
+setup(name='turnkey-netinfo',
     version='1.0',
     description='Python utility for obtaining network information',
-    author='Alon Swartz',
+    author='Stefan Davis',
     url='https://github.com/turnkeylinux/turnkey-netinfo',
     packages=['netinfo'])
