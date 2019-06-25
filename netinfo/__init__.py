@@ -116,7 +116,7 @@ class InterfaceInfo(object):
     @property
     def gateway(self):
         try:
-            output = check_output(["route", "-n"])
+            output = check_output(["route", "-n"]).decode()
         except CalledProcessError:
             return None
 
