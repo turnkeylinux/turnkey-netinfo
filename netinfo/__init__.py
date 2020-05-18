@@ -39,6 +39,8 @@ IFF_DYNAMIC = 0x8000    # addr's lost on inet down
 IFF_LOWER_UP = 0x10000  # has netif_dormant_on()
 IFF_DORMANT = 0x20000   # has netif_carrier_on()
 
+class NetInfoError(Exception):
+    pass
 
 def get_ifnames():
     """ returns list of interface names (up and down) """
@@ -116,12 +118,14 @@ class InterfaceInfo(object):
     def netmask(self):
         return self._get_ioctl_addr(SIOCGIFNETMASK)
 
-    @property
-    def gateway(self):
+    def get_gateway(self, errors=False):
         try:
             output = check_output(["route", "-n"]).decode()
         except CalledProcessError:
-            return None
+            if errors:
+                raise
+            else:
+                return None
 
         for line in output.splitlines():
             m = re.search(('^0.0.0.0\s+(.*?)\s+(.*)\s+%s'
@@ -129,7 +133,14 @@ class InterfaceInfo(object):
             if m:
                 return m.group(1)
 
-        return None
+        if errors:
+            raise NetInfoError('No default route found!')
+        else:
+            return None
+
+    @property
+    def gateway(self):
+        return self.get_gateway(errors=False)
 
 
 def get_hostname():
