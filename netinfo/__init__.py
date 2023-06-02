@@ -1,5 +1,5 @@
 # Copyright (c) 2010 Alon Swartz <alon@turnkeylinux.org>
-#               2019-2022 TurnKey GNU/Linux <admin@turnkeylinux.org>
+#               2019-2023 TurnKey GNU/Linux <admin@turnkeylinux.org>
 #
 # turnkey-netinfo is open source software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
@@ -13,6 +13,8 @@ import socket
 import fcntl
 from subprocess import check_output, CalledProcessError
 from typing import Optional, Union
+
+from lazyclass import lazyclass
 
 SIOCGIFFLAGS = 0x8913
 SIOCGIFADDR = 0x8915
@@ -68,7 +70,7 @@ def get_fqdn() -> str:
 class InterfaceInfo:
     """enumerate network related configurations"""
 
-    sockfd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sockfd = lazyclass(socket.socket)(socket.AF_INET, socket.SOCK_DGRAM)
 
     FLAGS = {}
     for attr in ('up', 'broadcast', 'debug', 'loopback',
@@ -133,8 +135,8 @@ class InterfaceInfo:
                 return None
 
         for line in output.splitlines():
-            m = re.search(r'^0.0.0.0\s+(.*?)\s+(.*)\s+'+self.ifname,
-                          line, re.M)
+            regex = rf'^0.0.0.0\s+(.*?)\s+(.*)\s+{self.ifname}'
+            m = re.search(regex, line, re.M)
             if m:
                 return m.group(1)
 
