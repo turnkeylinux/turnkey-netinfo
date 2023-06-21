@@ -1,5 +1,5 @@
 # Copyright (c) 2010 Alon Swartz <alon@turnkeylinux.org>
-#               2019 TurnKey GNU/Linux <admin@turnkeylinux.org>
+#               2019-2023 TurnKey GNU/Linux <admin@turnkeylinux.org>
 #
 # turnkey-netinfo is open source software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
@@ -11,8 +11,9 @@ import re
 import struct
 import socket
 import fcntl
-
 from subprocess import check_output, CalledProcessError
+from typing import Optional, Union
+
 from lazyclass import lazyclass
 
 SIOCGIFFLAGS = 0x8913
@@ -39,10 +40,12 @@ IFF_DYNAMIC = 0x8000    # addr's lost on inet down
 IFF_LOWER_UP = 0x10000  # has netif_dormant_on()
 IFF_DORMANT = 0x20000   # has netif_carrier_on()
 
+
 class NetInfoError(Exception):
     pass
 
-def get_ifnames():
+
+def get_ifnames() -> list[str]:
     """ returns list of interface names (up and down) """
     ifnames = []
     with open('/proc/net/dev', 'r') as fob:
@@ -56,11 +59,15 @@ def get_ifnames():
     return ifnames
 
 
-class Error(Exception):
-    pass
+def get_hostname() -> str:
+    return socket.gethostname()
 
 
-class InterfaceInfo(object):
+def get_fqdn() -> str:
+    return socket.getfqdn()
+
+
+class InterfaceInfo:
     """enumerate network related configurations"""
 
     sockfd = lazyclass(socket.socket)(socket.AF_INET, socket.SOCK_DGRAM)
@@ -73,7 +80,7 @@ class InterfaceInfo(object):
                  'dynamic', 'lower_up', 'dormant'):
         FLAGS[attr] = globals()['IFF_' + attr.upper()]
 
-    def __getattr__(self, attrname):
+    def __getattr__(self, attrname: str) -> bool:
         if attrname.startswith("is_"):
             attrname = attrname[3:]
 
@@ -81,22 +88,22 @@ class InterfaceInfo(object):
                 try:
                     return self._get_ioctl_flag(self.FLAGS[attrname])
                 except IOError:
-                    raise Error("could not get %s flag for %s" % (attrname,
-                                                                  self.ifname))
+                    raise NetInfoError(
+                        f"could not get {attrname} flag for {self.ifname}")
 
         raise AttributeError("no such attribute: " + attrname)
 
-    def __init__(self, ifname):
+    def __init__(self, ifname: str):
         if ifname not in get_ifnames():
-            raise Error("no such interface '%s'" % ifname)
+            raise NetInfoError("no such interface '{ifname}'")
 
         self.ifname = ifname
-        self.ifreq = (self.ifname + '\0'*32)[:32]
+        self.ifreq = bytes(self.ifname + '\0'*32, 'UTF-8')[:32]
 
-    def _get_ioctl(self, magic):
+    def _get_ioctl(self, magic: int) -> bytes:
         return fcntl.ioctl(self.sockfd.fileno(), magic, self.ifreq)
 
-    def _get_ioctl_addr(self, magic):
+    def _get_ioctl_addr(self, magic: int) -> Optional[str]:
         try:
             result = self._get_ioctl(magic)
         except IOError:
@@ -104,21 +111,21 @@ class InterfaceInfo(object):
 
         return socket.inet_ntoa(result[20:24])
 
-    def _get_ioctl_flag(self, magic):
+    def _get_ioctl_flag(self, magic: int) -> bool:
         result = self._get_ioctl(SIOCGIFFLAGS)
         flags = struct.unpack('H', result[16:18])[0]
         return (flags & magic) != 0
 
     @property
-    def address(self):
+    def address(self) -> Optional[str]:
         return self._get_ioctl_addr(SIOCGIFADDR)
     addr = address
 
     @property
-    def netmask(self):
+    def netmask(self) -> Optional[str]:
         return self._get_ioctl_addr(SIOCGIFNETMASK)
 
-    def get_gateway(self, errors=False):
+    def get_gateway(self, errors: bool = False) -> Optional[str]:
         try:
             output = check_output(["route", "-n"]).decode()
         except CalledProcessError:
@@ -128,8 +135,8 @@ class InterfaceInfo(object):
                 return None
 
         for line in output.splitlines():
-            m = re.search(('^0.0.0.0\s+(.*?)\s+(.*)\s+%s'
-                           ) % self.ifname, line, re.M)
+            regex = rf'^0.0.0.0\s+(.*?)\s+(.*)\s+{self.ifname}'
+            m = re.search(regex, line, re.M)
             if m:
                 return m.group(1)
 
@@ -139,13 +146,5 @@ class InterfaceInfo(object):
             return None
 
     @property
-    def gateway(self):
+    def gateway(self) -> Optional[str]:
         return self.get_gateway(errors=False)
-
-
-def get_hostname():
-    return socket.gethostname()
-
-
-def get_fqdn():
-    return socket.getfqdn()
