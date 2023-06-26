@@ -12,9 +12,7 @@ import struct
 import socket
 import fcntl
 from subprocess import check_output, CalledProcessError
-from typing import Optional, Union
-
-from lazyclass import lazyclass
+from typing import Optional
 
 SIOCGIFFLAGS = 0x8913
 SIOCGIFADDR = 0x8915
@@ -70,7 +68,7 @@ def get_fqdn() -> str:
 class InterfaceInfo:
     """enumerate network related configurations"""
 
-    sockfd = lazyclass(socket.socket)(socket.AF_INET, socket.SOCK_DGRAM)
+    _sockfd = None
 
     FLAGS = {}
     for attr in ('up', 'broadcast', 'debug', 'loopback',
@@ -93,6 +91,14 @@ class InterfaceInfo:
 
         raise AttributeError("no such attribute: " + attrname)
 
+    @classmethod
+    def _get_sockfd(cls) -> socket.socket:
+        if cls._sockfd:
+            return cls._sockfd
+        cls._sockfd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return cls._sockfd
+
+
     def __init__(self, ifname: str):
         if ifname not in get_ifnames():
             raise NetInfoError("no such interface '{ifname}'")
@@ -101,7 +107,7 @@ class InterfaceInfo:
         self.ifreq = bytes(self.ifname + '\0'*32, 'UTF-8')[:32]
 
     def _get_ioctl(self, magic: int) -> bytes:
-        return fcntl.ioctl(self.sockfd.fileno(), magic, self.ifreq)
+        return fcntl.ioctl(self._get_sockfd().fileno(), magic, self.ifreq)
 
     def _get_ioctl_addr(self, magic: int) -> Optional[str]:
         try:
