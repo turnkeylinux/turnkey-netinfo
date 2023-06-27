@@ -101,7 +101,7 @@ class InterfaceInfo:
 
     def __init__(self, ifname: str):
         if ifname not in get_ifnames():
-            raise NetInfoError("no such interface '{ifname}'")
+            raise NetInfoError(f"no such interface '{ifname}'")
 
         self.ifname = ifname
         self.ifreq = bytes(self.ifname + '\0'*32, 'UTF-8')[:32]
