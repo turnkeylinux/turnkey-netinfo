@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "turnkey-netinfo"
+version = "1.1"
+authors = [{name = "TurnKey GNU/Linux", email = "jeremy@turnkeylinux.org"}]
+license = {text = "GPLv3+"}
+description = "Python utility for obtaining network information"
+
+[project.urls]
+Homepage = "https://github.com/turnkeylinux/turnkey-netinfo"
+
+[tool.setuptools]
+packages = ["netinfo"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+gitwrapper = ["py.typed"]
