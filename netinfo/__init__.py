@@ -6,12 +6,11 @@
 # published by the Free Software Foundation; either version 3 of the
 # License, or (at your option) any later version.
 
-import re
-
-import struct
-import socket
 import fcntl
-from subprocess import check_output, CalledProcessError
+import re
+import socket
+import struct
+from subprocess import CalledProcessError, check_output
 from typing import Optional
 
 SIOCGIFFLAGS = 0x8913
@@ -46,7 +45,7 @@ class NetInfoError(Exception):
 def get_ifnames() -> list[str]:
     """returns list of interface names (up and down)"""
     ifnames = []
-    with open("/proc/net/dev", "r") as fob:
+    with open("/proc/net/dev") as fob:
         for line in fob:
             try:
                 ifname, junk = line.strip().split(":")
@@ -100,7 +99,7 @@ class InterfaceInfo:
             if attrname in self.FLAGS:
                 try:
                     return self._get_ioctl_flag(self.FLAGS[attrname])
-                except IOError:
+                except OSError:
                     raise NetInfoError(
                         f"could not get {attrname} flag for {self.ifname}"
                     )
@@ -127,7 +126,7 @@ class InterfaceInfo:
     def _get_ioctl_addr(self, magic: int) -> Optional[str]:
         try:
             result = self._get_ioctl(magic)
-        except IOError:
+        except OSError:
             return None
 
         return socket.inet_ntoa(result[20:24])
