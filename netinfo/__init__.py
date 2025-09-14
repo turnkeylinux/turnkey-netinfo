@@ -10,8 +10,8 @@ import fcntl
 import re
 import socket
 import struct
-from subprocess import CalledProcessError, check_output
-from typing import Optional
+import subprocess
+from typing import ClassVar
 
 SIOCGIFFLAGS = 0x8913
 SIOCGIFADDR = 0x8915
@@ -69,7 +69,7 @@ class InterfaceInfo:
 
     _sockfd = None
 
-    FLAGS = {}
+    FLAGS: ClassVar[dict[str, int]] = {}
     for attr in (
         "up",
         "broadcast",
@@ -99,12 +99,12 @@ class InterfaceInfo:
             if attrname in self.FLAGS:
                 try:
                     return self._get_ioctl_flag(self.FLAGS[attrname])
-                except OSError:
+                except OSError as e:
                     raise NetInfoError(
                         f"could not get {attrname} flag for {self.ifname}"
-                    )
+                    ) from e
 
-        raise AttributeError("no such attribute: " + attrname)
+        raise AttributeError(f"no such attribute: {attrname}")
 
     @classmethod
     def _get_sockfd(cls) -> socket.socket:
@@ -113,7 +113,7 @@ class InterfaceInfo:
         cls._sockfd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         return cls._sockfd
 
-    def __init__(self, ifname: str):
+    def __init__(self, ifname: str) -> None:
         if ifname not in get_ifnames():
             raise NetInfoError(f"no such interface '{ifname}'")
 
@@ -123,7 +123,7 @@ class InterfaceInfo:
     def _get_ioctl(self, magic: int) -> bytes:
         return fcntl.ioctl(self._get_sockfd().fileno(), magic, self.ifreq)
 
-    def _get_ioctl_addr(self, magic: int) -> Optional[str]:
+    def _get_ioctl_addr(self, magic: int) -> str | None:
         try:
             result = self._get_ioctl(magic)
         except OSError:
@@ -137,25 +137,27 @@ class InterfaceInfo:
         return (flags & magic) != 0
 
     @property
-    def address(self) -> Optional[str]:
+    def address(self) -> str | None:
         return self._get_ioctl_addr(SIOCGIFADDR)
 
     addr = address
 
     @property
-    def netmask(self) -> Optional[str]:
+    def netmask(self) -> str | None:
         return self._get_ioctl_addr(SIOCGIFNETMASK)
 
-    def get_gateway(self, errors: bool = False) -> Optional[str]:
+    def get_gateway(self, errors: bool = False) -> str | None:
         try:
-            output = check_output(["route", "-n"]).decode()
-        except CalledProcessError:
+            route_n = subprocess.run(
+                ["route", "-n"], capture_output=True, text=True, check=True
+            ).stdout
+        except subprocess.CalledProcessError as e:
             if errors:
-                raise
+                raise NetInfoError(e) from e
             else:
                 return None
 
-        for line in output.splitlines():
+        for line in route_n.splitlines():
             regex = rf"^0.0.0.0\s+(.*?)\s+(.*)\s+{self.ifname}"
             m = re.search(regex, line, re.M)
             if m:
@@ -167,5 +169,5 @@ class InterfaceInfo:
             return None
 
     @property
-    def gateway(self) -> Optional[str]:
+    def gateway(self) -> str | None:
         return self.get_gateway(errors=False)
