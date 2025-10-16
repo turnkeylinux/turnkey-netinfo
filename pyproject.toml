@@ -17,4 +17,4 @@ packages = ["netinfo"]
 include-package-data = false
 
 [tool.setuptools.package-data]
-gitwrapper = ["py.typed"]
+netinfo = ["py.typed"]
