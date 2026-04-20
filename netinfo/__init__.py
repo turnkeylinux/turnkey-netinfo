@@ -7,6 +7,7 @@
 # License, or (at your option) any later version.
 
 import fcntl
+import ipaddress
 import re
 import socket
 import struct
@@ -48,11 +49,10 @@ def get_ifnames() -> list[str]:
     with open("/proc/net/dev") as fob:
         for line in fob:
             try:
-                ifname, junk = line.strip().split(":")
+                ifname, _ = line.strip().split(":")
                 ifnames.append(ifname)
             except ValueError:
                 pass
-
     return ifnames
 
 
@@ -62,6 +62,35 @@ def get_hostname() -> str:
 
 def get_fqdn() -> str:
     return socket.getfqdn()
+
+
+def _get_ipv6_info(ifname: str) -> list[tuple[str, int]]:
+    """Read IPv6 addresses and prefix lengths from /proc/net/if_inet6.
+
+    Returns a list of (address, prefixlen) tuples for the given interface.
+    Each line in /proc/net/if_inet6 has the format:
+      <addr_hex> <ifindex> <prefixlen_hex> <scope_hex> <flags_hex> <ifname>
+    e.g.:
+      fe800000000000000200ff0000000001 02 40 20 80 eth0
+    """
+    results = []
+    try:
+        with open("/proc/net/if_inet6") as fob:
+            for line in fob:
+                parts = line.strip().split()
+                if len(parts) != 6 or parts[5] != ifname:
+                    continue
+                addr_hex = parts[0]
+                prefixlen = int(parts[2], 16)
+                # Insert colons to form a valid IPv6 address then compress it
+                addr = ":".join(
+                    addr_hex[i:i+4] for i in range(0, 32, 4)
+                )
+                addr = str(ipaddress.IPv6Address(addr))
+                results.append((addr, prefixlen))
+    except OSError:
+        pass
+    return results
 
 
 class InterfaceInfo:
@@ -95,7 +124,6 @@ class InterfaceInfo:
     def __getattr__(self, attrname: str) -> bool:
         if attrname.startswith("is_"):
             attrname = attrname[3:]
-
             if attrname in self.FLAGS:
                 try:
                     return self._get_ioctl_flag(self.FLAGS[attrname])
@@ -103,7 +131,6 @@ class InterfaceInfo:
                     raise NetInfoError(
                         f"could not get {attrname} flag for {self.ifname}"
                     ) from e
-
         raise AttributeError(f"no such attribute: {attrname}")
 
     @classmethod
@@ -116,7 +143,6 @@ class InterfaceInfo:
     def __init__(self, ifname: str) -> None:
         if ifname not in get_ifnames():
             raise NetInfoError(f"no such interface '{ifname}'")
-
         self.ifname = ifname
         self.ifreq = bytes(self.ifname + "\0" * 32, "UTF-8")[:32]
 
@@ -128,7 +154,6 @@ class InterfaceInfo:
             result = self._get_ioctl(magic)
         except OSError:
             return None
-
         return socket.inet_ntoa(result[20:24])
 
     def _get_ioctl_flag(self, magic: int) -> bool:
@@ -136,6 +161,9 @@ class InterfaceInfo:
         flags = struct.unpack("H", result[16:18])[0]
         return (flags & magic) != 0
 
+    # IPv4
+
+    # an interface usually only has one ipv4 - but it can have more...
     @property
     def address(self) -> str | None:
         return self._get_ioctl_addr(SIOCGIFADDR)
@@ -145,6 +173,37 @@ class InterfaceInfo:
     @property
     def netmask(self) -> str | None:
         return self._get_ioctl_addr(SIOCGIFNETMASK)
+
+    @property
+    def cidr(self) -> str | None:
+        addr = self.address
+        mask = self.netmask
+        if addr is None or mask is None:
+            return None
+        network = ipaddress.IPv4Network(f"{addr}/{mask}", strict=False)
+        return f"{addr}/{network.prefixlen}"
+
+    # IPv6
+
+    @property
+    def ipv6_addresses(self) -> list[str]:
+        """All IPv6 addresses assigned to the interface (compressed form)."""
+        return [addr for addr, _ in _get_ipv6_info(self.ifname)]
+
+    addrs6 = ipv6_addresses
+
+    @property
+    def ipv6_cidrs(self) -> list[str]:
+        """All IPv6 addresses with prefix length.
+
+        E.g. ['fe80::1/64', '2001:db8::1/48'].
+        """
+        return [
+            f"{addr}/{prefixlen}"
+            for addr, prefixlen in _get_ipv6_info(self.ifname)
+        ]
+
+    # Gateway
 
     def get_gateway(self, errors: bool = False) -> str | None:
         try:
